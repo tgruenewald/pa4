@@ -141,7 +141,7 @@ int send_file()
         int fileSize = ftell(fp);
         fseek(fp, 0L, SEEK_SET);
 
-        char *buffer;
+        char *buffer; // todo:  this should probably be unsigned char
         char *startBuf = buffer;
         buffer = malloc(fileSize);
         if (fread(buffer, sizeof(*buffer), fileSize,fp) != fileSize)
@@ -163,7 +163,9 @@ int send_file()
         		// then this will be the last packet
         		strcpy(more,"n");
         		printf("Sending last packet:  %d bytes will be sent\n",(fileSize-bytesSent ));
-        		memcpy(buf,buffer, fileSize-bytesSent);
+//        		memcpy(buf,buffer, fileSize-bytesSent);
+        		memcpy(buf,"123456789012", fileSize-bytesSent);
+        		printf("Sending [%s]\n", buf);
         		sent = (fileSize-bytesSent);
         		bytesSent = bytesSent + sent;
         	}
@@ -368,6 +370,7 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 					// now write out the file to disk.
 		            FILE *fp = fopen(((struct FileItem *) start->data)->fileName, "w");
 		            fwrite(fileContentsBuffer, sizeof(char), accumLen,fp);
+//		            fwrite("hello world", sizeof(char), strlen("hello world"),fp);
 		            fclose(fp);
 		            free(startOfBuffer);
 				}
