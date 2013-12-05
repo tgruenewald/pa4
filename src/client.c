@@ -279,6 +279,7 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 //					        create_packet("get", clientName, ((struct FileItem *) start->data)->fileName ),
 //					        &recvPackets);
 
+
 						int rc = connect(clientSockfd, res->ai_addr, res->ai_addrlen);
 						printf("Connection status. %d %s\n",errno, strerror(errno));
 						if (rc != 0 && errno != EISCONN)
