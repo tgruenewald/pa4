@@ -1,0 +1,4 @@
+
+*.o
+
+Debug/src/packet.o
