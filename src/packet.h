@@ -11,7 +11,6 @@
 #include "LinkedList.h"
 #define MAX_FILE_COUNT 3
 
-
 struct Packet
 {
 	char type[LEN];
@@ -41,6 +40,7 @@ struct Files
 	char numFiles[20];
 };
 
+
 // global variables
 struct addrinfo hints, *res;
 int sockfd;
@@ -56,7 +56,7 @@ int incommingFileGetSockFd;
 #define REGISTER_FILE_TYPE "register_files"
 #define UNREGISTER_FILE_TYPE "unregister_files"
 #define LS_TYPE "ls"
-#define GET_TYPE "get";
+#define GET_TYPE "get"
 
 #define REJECT_TYPE "reject"
 #define OK_TYPE "ok"

@@ -287,24 +287,34 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 							printf("Connection failed. %d %s\n",errno, strerror(errno));
 							return;
 						}
+						struct Packet packet = create_packet(GET_TYPE, clientName, ((struct FileItem *) start->data)->fileName );
 						send(clientSockfd, &packet, sizeof(struct Packet), 0);
 
 					printf("Receiving data back\n");
-//					do
+					int fileSize = atoi(((struct FileItem *) start->data)->fileSize);
+					char *fileContentsBuffer = malloc(fileSize);
+
+					do
 					{
-						struct Packet *recvPacket = malloc(sizeof (struct Packet));
-						int rc = recv(clientSockfd, recvPacket, sizeof(struct Packet), 0);
-						add_item(&recvPackets, "", recvPacket);
+						struct Packet recvPacket;
+						int rc = recv(clientSockfd, &recvPacket, sizeof(struct Packet), 0);
 						if (rc < 0)
 						{
 							printf("bad rc = %d\n",rc);
 							exit(1);
 						}
-						print_packet(*recvPacket);
-						if (recvPacket->areThereMore[0] == 'n')
+
+						if (fileSize < 0)
+						{
+							fileSize = atoi(recvPacket.length);
+							fileContentsBuffer = malloc(fileSize);
+						}
+
+
+						if (recvPacket.areThereMore[0] == 'n')
 							break;
 					}
-//					while (1);
+					while (1);
 				}
 
 			}
