@@ -134,6 +134,32 @@ int send_file()
     	}
     	printf("Recvd\n");
     	print_packet(packet);
+
+    	// read the file from disk
+        FILE *fp = fopen(packet.message, "r");
+        fseek(fp, 0L, SEEK_END);
+        int fileSize = ftell(fp);
+        fseek(fp, 0L, SEEK_SET);
+
+        unsigned char *buffer;
+        unsigned char *startBuf = buffer;
+        buffer = malloc(fileSize);
+        if (fread(buffer, sizeof(*buffer), fileSize,fp) != fileSize)
+        {
+            perror("Mismatched read.  Not all bytes were read");
+            free(buffer);
+            exit(1);
+        }
+        fclose(fp);
+        int bytesSent = 0;
+        char buf[BUFMAX];
+        while (bytesSent < fileSize)
+        {
+        	struct Packet packet = create_packet_with_more(GET_TYPE, "", )
+        	memset(buf, '\0', BUFMAX);
+
+        }
+    	// now send the file
 		rc = send(new_socket, &packet, sizeof(struct Packet), 0);
 		if (rc == 0)
 		{
@@ -293,7 +319,9 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 					printf("Receiving data back\n");
 					int fileSize = atoi(((struct FileItem *) start->data)->fileSize);
 					char *fileContentsBuffer = malloc(fileSize);
-
+					char *startOfBuffer = fileContentsBuffer;
+					memset(fileContentsBuffer, '\0', fileSize);
+					int accumLen = 0;
 					do
 					{
 						struct Packet recvPacket;
@@ -304,17 +332,20 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 							exit(1);
 						}
 
-						if (fileSize < 0)
-						{
-							fileSize = atoi(recvPacket.length);
-							fileContentsBuffer = malloc(fileSize);
-						}
-
+						memcpy(fileContentsBuffer, recvPacket.message, atoi(recvPacket.length));
+						fileContentsBuffer = fileContentsBuffer + atoi(recvPacket.length);
+						accumLen = accumLen + atoi(recvPacket.length);
 
 						if (recvPacket.areThereMore[0] == 'n')
 							break;
 					}
 					while (1);
+
+					// now write out the file to disk.
+		            FILE *fp = fopen(((struct FileItem *) start->data)->fileName, "w");
+		            fwrite(fileContentsBuffer, sizeof(char), accumLen,fp);
+		            fclose(fp);
+		            free(startOfBuffer);
 				}
 
 			}
