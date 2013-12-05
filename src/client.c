@@ -30,7 +30,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <time.h> /* select() */
-#include "str2md5.h"
+
 
 #define NIPQUAD(addr) \
          ((unsigned char *)&addr)[0], \
@@ -172,9 +172,9 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
     // register client
 	struct Client client;
 	memset(&client,'\0',sizeof(struct Client));
-	strlcpy(client.clientName, clientName, sizeof(client.clientName));
-	strlcpy(client.clientIp, clientFileListeningIp, sizeof(client.clientIp));
-	strlcpy(client.clientPort, clientFileListeningPort, sizeof(client.clientPort));
+	strncpy(client.clientName, clientName, sizeof(client.clientName));
+	strncpy(client.clientIp, clientFileListeningIp, sizeof(client.clientIp));
+	strncpy(client.clientPort, clientFileListeningPort, sizeof(client.clientPort));
 	char buf[BUFMAX];
 	memset(buf, '\0', BUFMAX);
 	memcpy(buf,  &client, sizeof(client));
@@ -239,7 +239,7 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 				char *arg = strtok_r(NULL, sep, &tracker);
 				if (arg != NULL)
 				{
-					strlcpy(fileToGet, arg, sizeof(fileToGet));
+					strncpy(fileToGet, arg, sizeof(fileToGet));
 				}
 
 				// find the file in the list
@@ -338,11 +338,11 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 					{
 						printf("Got : %s\n", recvFiles->files[i].fileName);
 						struct FileItem *file = malloc(sizeof(struct FileItem));
-						strlcpy(file->clientName, recvFiles->files[i].clientName, sizeof(file->clientName));
-						strlcpy(file->fileName, recvFiles->files[i].fileName, sizeof(file->fileName));
-						strlcpy(file->fileSize, recvFiles->files[i].fileSize, sizeof(file->fileSize));
-						strlcpy(file->clientIp, recvFiles->files[i].clientIp, sizeof(file->clientIp));
-						strlcpy(file->clientPort, recvFiles->files[i].clientPort, sizeof(file->clientPort));
+						strncpy(file->clientName, recvFiles->files[i].clientName, sizeof(file->clientName));
+						strncpy(file->fileName, recvFiles->files[i].fileName, sizeof(file->fileName));
+						strncpy(file->fileSize, recvFiles->files[i].fileSize, sizeof(file->fileSize));
+						strncpy(file->clientIp, recvFiles->files[i].clientIp, sizeof(file->clientIp));
+						strncpy(file->clientPort, recvFiles->files[i].clientPort, sizeof(file->clientPort));
 						add_item(&mfl, createFileKey(file), file);
 					}
 
@@ -396,8 +396,8 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 						struct stat st;
 						stat(entry->d_name, &st);
 						printf ("sending %s, size = %d\n", entry->d_name, (int) st.st_size);
-						strlcpy(clientFiles.files[i].clientName, clientName, sizeof(clientFiles.files[i].clientName));
-						strlcpy(clientFiles.files[i].fileName, entry->d_name, sizeof(clientFiles.files[i].fileName));
+						strncpy(clientFiles.files[i].clientName, clientName, sizeof(clientFiles.files[i].clientName));
+						strncpy(clientFiles.files[i].fileName, entry->d_name, sizeof(clientFiles.files[i].fileName));
 						sprintf(clientFiles.files[i].fileSize, "%d",(int) st.st_size);
 
 						i++;
@@ -464,9 +464,9 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 				}
 				struct Client client;
 				memset(&client,'\0',sizeof(struct Client));
-				strlcpy(client.clientName, clientName, sizeof(client.clientName));
-				strlcpy(client.clientIp, clientFileListeningIp, sizeof(client.clientIp));
-				strlcpy(client.clientPort, clientFileListeningPort, sizeof(client.clientPort));
+				strncpy(client.clientName, clientName, sizeof(client.clientName));
+				strncpy(client.clientIp, clientFileListeningIp, sizeof(client.clientIp));
+				strncpy(client.clientPort, clientFileListeningPort, sizeof(client.clientPort));
 				char buf[BUFMAX];
 				memset(buf, '\0', BUFMAX);
 				memcpy(buf,  &client, sizeof(client));

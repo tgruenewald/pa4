@@ -42,9 +42,9 @@ struct Packet create_packet_with_more(char *type, char *from, char *more, char *
 {
     struct Packet packet;
     memset(packet.message, '\0', BUFMAX);
-    strlcpy(packet.type, type, sizeof(packet.type));
-    strlcpy(packet.from, from, sizeof(packet.from));
-    strlcpy(packet.areThereMore,more, sizeof(packet.areThereMore));
+    strncpy(packet.type, type, sizeof(packet.type));
+    strncpy(packet.from, from, sizeof(packet.from));
+    strncpy(packet.areThereMore,more, sizeof(packet.areThereMore));
     memcpy(packet.message, msg,BUFMAX);
     sprintf(packet.length,"%d", strlen(packet.message));
     return packet;

@@ -24,7 +24,6 @@
 #include "const.h"
 #include <assert.h>
 #include <signal.h>
-#include "str2md5.h"
 #include <errno.h>
 
 // http://www.binarytides.com/multiple-socket-connections-fdset-select-linux/
@@ -226,9 +225,9 @@ int handle_connection(int new_fd)
 		memset(&clientFiles, '\0', sizeof(clientFiles));
 		while (start != NULL)
 		{
-			strlcpy(clientFiles.files[i].clientName, ((struct FileItem *) start->data)->clientName , sizeof(clientFiles.files[i].clientName));
-			strlcpy(clientFiles.files[i].fileName,   ((struct FileItem *) start->data)->fileName, sizeof(clientFiles.files[i].fileName));
-			strlcpy(clientFiles.files[i].fileSize,   ((struct FileItem *) start->data)->fileSize, sizeof(clientFiles.files[i].fileSize));
+			strncpy(clientFiles.files[i].clientName, ((struct FileItem *) start->data)->clientName , sizeof(clientFiles.files[i].clientName));
+			strncpy(clientFiles.files[i].fileName,   ((struct FileItem *) start->data)->fileName, sizeof(clientFiles.files[i].fileName));
+			strncpy(clientFiles.files[i].fileSize,   ((struct FileItem *) start->data)->fileSize, sizeof(clientFiles.files[i].fileSize));
 			struct LinkedList *client = find(clients, clientFiles.files[i].clientName);
 			if (client == NULL)
 			{
@@ -236,8 +235,8 @@ int handle_connection(int new_fd)
 			}
 			else
 			{
-				strlcpy(clientFiles.files[i].clientPort, ((struct Client *) client->data)->clientPort, sizeof(clientFiles.files[i].clientPort));
-				strlcpy(clientFiles.files[i].clientIp, ((struct Client *) client->data)->clientIp, sizeof(clientFiles.files[i].clientIp));
+				strncpy(clientFiles.files[i].clientPort, ((struct Client *) client->data)->clientPort, sizeof(clientFiles.files[i].clientPort));
+				strncpy(clientFiles.files[i].clientIp, ((struct Client *) client->data)->clientIp, sizeof(clientFiles.files[i].clientIp));
 			}
 			i++;
 			totalCount++;
@@ -309,9 +308,9 @@ int handle_connection(int new_fd)
 
 			printf("Got : %s\n", recvFiles->files[i].fileName);
 			struct FileItem *file = malloc(sizeof(struct FileItem));
-			strlcpy(file->clientName, recvFiles->files[i].clientName, sizeof(file->clientName));
-			strlcpy(file->fileName, recvFiles->files[i].fileName, sizeof(file->fileName));
-			strlcpy(file->fileSize, recvFiles->files[i].fileSize, sizeof(file->fileSize));
+			strncpy(file->clientName, recvFiles->files[i].clientName, sizeof(file->clientName));
+			strncpy(file->fileName, recvFiles->files[i].fileName, sizeof(file->fileName));
+			strncpy(file->fileSize, recvFiles->files[i].fileSize, sizeof(file->fileSize));
 
 			add_item(&mfl,createFileKey(file), file );
 			print_list("File list:", mfl);
@@ -322,16 +321,16 @@ int handle_connection(int new_fd)
 //			struct LinkedList *prevClient = find(clients, packet.message);
 //			if (prevClient != NULL)
 //			{
-//				strlcpy(packet.type, REJECT_TYPE, sizeof packet.type);
+//				strncpy(packet.type, REJECT_TYPE, sizeof packet.type);
 //			}
 //			else
 //			{
 //				// then new client, so add to list.
 //				struct Client *client = malloc(sizeof(struct Client));
 //				memcpy(client, packet.message, sizeof(struct Client));
-//				//strlcpy(client->clientName, packet.message, packet.length);
+//				//strncpy(client->clientName, packet.message, packet.length);
 //				add_item(&clients,client->clientName, client);
-//				strlcpy(packet.type, OK_TYPE, sizeof packet.type);
+//				strncpy(packet.type, OK_TYPE, sizeof packet.type);
 //				print_list("Client list:", clients);
 //			}
 	}
@@ -349,7 +348,7 @@ int handle_connection(int new_fd)
 		struct LinkedList *prevClient = find(clients, client->clientName);
 		if (prevClient != NULL)
 		{
-			strlcpy(packet.type, REJECT_TYPE, sizeof packet.type);
+			strncpy(packet.type, REJECT_TYPE, sizeof packet.type);
 		}
 		else
 		{
@@ -357,7 +356,7 @@ int handle_connection(int new_fd)
 			// http://www.beej.us/guide/bgnet/output/html/multipage/getpeernameman.html
 			// figure out ip and port:
 			add_item(&clients,client->clientName, client);
-			strlcpy(packet.type, OK_TYPE, sizeof packet.type);
+			strncpy(packet.type, OK_TYPE, sizeof packet.type);
 			print_list("Client list:", clients);
 		}
 	}
@@ -370,14 +369,14 @@ int handle_connection(int new_fd)
 		struct LinkedList *prevClient = find(clients, packet.message);
 		if (prevClient == NULL)
 		{
-			strlcpy(packet.type, REJECT_TYPE, sizeof packet.type);
+			strncpy(packet.type, REJECT_TYPE, sizeof packet.type);
 		}
 		else
 		{
 			// then new client, so add to list.
 			struct Client *freeMe = (struct Client *) remove_item(&clients, ((struct Client *) prevClient->data)->clientName);
 			free(freeMe);
-			strlcpy(packet.type, OK_TYPE, sizeof packet.type);
+			strncpy(packet.type, OK_TYPE, sizeof packet.type);
 			print_list("Client list after unregister:", clients);
 
 			// now remove any files that the client has
