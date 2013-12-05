@@ -66,7 +66,6 @@ void start_server(char *port)
 	struct sockaddr_storage their_addr;
 	struct addrinfo hints, *res;
 	socklen_t addr_size;
-	int new_fd;
 
 	addr_size = sizeof their_addr;
 

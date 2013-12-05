@@ -141,8 +141,8 @@ int send_file()
         int fileSize = ftell(fp);
         fseek(fp, 0L, SEEK_SET);
 
-        unsigned char *buffer;
-        unsigned char *startBuf = buffer;
+        char *buffer;
+        char *startBuf = buffer;
         buffer = malloc(fileSize);
         if (fread(buffer, sizeof(*buffer), fileSize,fp) != fileSize)
         {
@@ -155,17 +155,41 @@ int send_file()
         char buf[BUFMAX];
         while (bytesSent < fileSize)
         {
-        	struct Packet packet = create_packet_with_more(GET_TYPE, "", )
-        	memset(buf, '\0', BUFMAX);
+        	char more[YN_LEN];
+        	memset(buf,'\0', BUFMAX);
+        	int sent = 0;
+        	if (bytesSent + BUFMAX > fileSize)
+        	{
+        		// then this will be the last packet
+        		strcpy(more,"n");
+        		printf("Sending last packet:  %d bytes will be sent\n",(fileSize-bytesSent ));
+        		memcpy(buf,buffer, fileSize-bytesSent);
+        		sent = (fileSize-bytesSent);
+        		bytesSent = bytesSent + sent;
+        	}
+        	else
+        	{
+        		// still more to go
+        		strcpy(more,"y");
+        		memcpy(buf, buffer,BUFMAX);
+        		sent = BUFMAX;
+        		bytesSent = bytesSent + sent;
+        	}
+
+
+        	struct Packet packet = create_packet_with_more(GET_TYPE, "",more, buf);
+        	sprintf(packet.length,"%d", sent);
+    		rc = send(new_socket, &packet, sizeof(struct Packet), 0);
+    		if (rc == 0)
+    		{
+    			printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
+    			return ret;
+    		}
+
+    		buffer = buffer + BUFMAX;
 
         }
-    	// now send the file
-		rc = send(new_socket, &packet, sizeof(struct Packet), 0);
-		if (rc == 0)
-		{
-			printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
-			return ret;
-		}
+        free(startBuf);
     	close(new_socket);
     }
 
