@@ -79,7 +79,7 @@ void setup_socket_for_getting_files(char *port, char *ip)
     freeaddrinfo(res);
 
 }
-int send_file()
+int send_file(char *clientName, char *serverIp, char *serverPort)
 {
 	int ret = 0;
     fd_set rfds;
@@ -108,116 +108,193 @@ int send_file()
     //If something happened on the master socket , then its an incoming connection
     if (FD_ISSET(incommingFileGetSockFd, &rfds))
     {
-    	ret = 1;
+
 //    	printf("Accepting new connection\n");
         if ((new_socket = accept(incommingFileGetSockFd, (struct sockaddr *) &their_addr, &addr_size))<0)
         {
             perror("accept");
             exit(EXIT_FAILURE);
         }
-
-        int pid = fork();
-        if (pid < 0)
-        {
-        	perror("Error forking");
-        	exit(1);
-        }
-
-        if (pid == 0)
-        {
-        	// in child process
-        	close(incommingFileGetSockFd);
-			// now send the file, probably should fork here
-//			printf("examing the request to share my file\n");
-			int rc = 0;
-			struct Packet packet;
-			rc = recv(new_socket, &packet, sizeof(struct Packet), 0);
-			if (rc < 0)
-			{
-				printf("bad rc = %d\n",rc);
-				close(new_socket);
-				exit(1);
-			}
-			if (rc == 0)
-			{
-				printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
-				close(new_socket);
-				exit(0);
-			}
-//			printf("Recvd\n");
-//			print_packet(packet);
-
-			// read the file from disk
-			FILE *fp = fopen(packet.message, "r");
-			fseek(fp, 0L, SEEK_END);
-			int fileSize = ftell(fp);
-			fseek(fp, 0L, SEEK_SET);
-
-			char *buffer = malloc(fileSize);
-			char *startBuf = buffer;
-			if (fread(buffer, sizeof(*buffer), fileSize,fp) != fileSize)
-			{
-				perror("Mismatched read.  Not all bytes were read");
-				fclose(fp);
-				close(new_socket);
-				free(buffer);
-				exit(1);
-			}
-			fclose(fp);
-			int bytesSent = 0;
-			char buf[BUFMAX];
-			while (bytesSent < fileSize)
-			{
-				char more[YN_LEN];
-				memset(buf,'\0', BUFMAX);
-				int sent = 0;
-				if (bytesSent + BUFMAX > fileSize)
-				{
-					// then this will be the last packet
-					strcpy(more,"n");
-//					printf("Sending last packet:  %d bytes will be sent\n",(fileSize-bytesSent ));
-					memcpy(buf,buffer, fileSize-bytesSent);
-	//        		memcpy(buf,"123456789012", fileSize-bytesSent);
-					//printf("Sending [%s]\n", buf);
-					sent = (fileSize-bytesSent);
-					bytesSent = bytesSent + sent;
-				}
-				else
-				{
-					// still more to go
-					strcpy(more,"y");
-					memcpy(buf, buffer,BUFMAX);
-					sent = BUFMAX;
-					bytesSent = bytesSent + sent;
-				}
-
-
-				struct Packet packet = create_packet_with_more(GET_TYPE, "",more, buf);
-				sprintf(packet.length,"%d", sent);
-				rc = send(new_socket, &packet, sizeof(struct Packet), 0);
-				if (rc == 0)
-				{
-					printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
-					free(startBuf);
-					close(new_socket);
-					exit(0);
-				}
-
-				buffer = buffer + BUFMAX;
-
-			}
-			free(startBuf);
+		int rc = 0;
+		struct Packet packet;
+		rc = recv(new_socket, &packet, sizeof(struct Packet), 0);
+		if (rc < 0)
+		{
+			printf("bad rc = %d\n",rc);
+			close(new_socket);
+			exit(1);
+		}
+		if (rc == 0)
+		{
+			printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
 			close(new_socket);
 			exit(0);
-        }  // end child process
-        else
-        {
-        	// parent process
-        	close(new_socket);
-        }
+		}
+
+
+		if (strcmp(packet.type, LS_TYPE) == 0)
+		{
+			ret = 1;
+			ls(clientName, serverIp, serverPort);
+		}
+		else // it must be a file get request
+		{
+			int pid = fork();
+			if (pid < 0)
+			{
+				perror("Error forking");
+				exit(1);
+			}
+
+			if (pid == 0)
+			{
+				// in child process
+				close(incommingFileGetSockFd);
+				// now send the file, probably should fork here
+	//			printf("examing the request to share my file\n");
+
+	//			printf("Recvd\n");
+	//			print_packet(packet);
+				// examine packet to see if it is a get of an ls push
+				if (strcmp(packet.type, GET_TYPE) == 0)
+				{
+
+					// read the file from disk
+					FILE *fp = fopen(packet.message, "r");
+					fseek(fp, 0L, SEEK_END);
+					int fileSize = ftell(fp);
+					fseek(fp, 0L, SEEK_SET);
+
+					char *buffer = malloc(fileSize);
+					char *startBuf = buffer;
+					if (fread(buffer, sizeof(*buffer), fileSize,fp) != fileSize)
+					{
+						perror("Mismatched read.  Not all bytes were read");
+						fclose(fp);
+						close(new_socket);
+						free(buffer);
+						exit(1);
+					}
+					fclose(fp);
+					int bytesSent = 0;
+					char buf[BUFMAX];
+					while (bytesSent < fileSize)
+					{
+						char more[YN_LEN];
+						memset(buf,'\0', BUFMAX);
+						int sent = 0;
+						if (bytesSent + BUFMAX > fileSize)
+						{
+							// then this will be the last packet
+							strcpy(more,"n");
+		//					printf("Sending last packet:  %d bytes will be sent\n",(fileSize-bytesSent ));
+							memcpy(buf,buffer, fileSize-bytesSent);
+			//        		memcpy(buf,"123456789012", fileSize-bytesSent);
+							//printf("Sending [%s]\n", buf);
+							sent = (fileSize-bytesSent);
+							bytesSent = bytesSent + sent;
+						}
+						else
+						{
+							// still more to go
+							strcpy(more,"y");
+							memcpy(buf, buffer,BUFMAX);
+							sent = BUFMAX;
+							bytesSent = bytesSent + sent;
+						}
+
+
+						struct Packet packet = create_packet_with_more(GET_TYPE, "",more, buf,BUFMAX);
+						sprintf(packet.length,"%d", sent);
+						rc = send(new_socket, &packet, sizeof(struct Packet), 0);
+						if (rc == 0)
+						{
+							printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
+							free(startBuf);
+							close(new_socket);
+							exit(0);
+						}
+
+						buffer = buffer + BUFMAX;
+
+					}
+					free(startBuf);
+				}
+
+				close(new_socket);
+				exit(0);
+			}  // end child process
+			else
+			{
+				// parent process
+				close(new_socket);
+			}
+		}
     }
 
     return ret;
+}
+
+void ls(char *clientName, char *serverIp, char *serverPort)
+{
+	delete_list(mfl);
+	mfl = NULL;
+	struct LinkedList *recvPackets = NULL;
+	send_and_recv_packets(serverIp, serverPort,
+			create_packet(LS_TYPE, clientName, "",0), &recvPackets);
+
+	struct LinkedList *start = recvPackets;
+	while (start != NULL)
+	{
+
+		struct Files *recvFiles = malloc(sizeof(struct Files));
+		memcpy(recvFiles,  ((struct Packet *) start->data)->message, sizeof(struct Files));
+//            char *output = str2md5(packet.message, BUFMAX);
+//            printf("server md5 hash %s\n", output);
+		int i = 0;
+		int fileCount = atoi(recvFiles->numFiles);
+		for (i = 0; i < fileCount; i++)
+		{
+			printf("Got : %s\n", recvFiles->files[i].fileName);
+			struct FileItem *file = malloc(sizeof(struct FileItem));
+			strncpy(file->clientName, recvFiles->files[i].clientName, sizeof(file->clientName));
+			strncpy(file->fileName, recvFiles->files[i].fileName, sizeof(file->fileName));
+			strncpy(file->fileSize, recvFiles->files[i].fileSize, sizeof(file->fileSize));
+			strncpy(file->clientIp, recvFiles->files[i].clientIp, sizeof(file->clientIp));
+			strncpy(file->clientPort, recvFiles->files[i].clientPort, sizeof(file->clientPort));
+			add_item(&mfl, createFileKey(file), file);
+		}
+
+
+		start = start->next;
+	}
+
+	start = mfl;
+	printf("%-30s   %10s   %-10s    %-20s   %8s\n",
+			"File name",
+			"Size",
+			"Client",
+			"IP",
+			"Port");
+	printf("%-30s   %10s   %-10s    %-20s   %8s\n",
+			"---------------",
+			"---------",
+			"---------",
+			"---------------",
+			"---------");
+	while (start != NULL)
+	{
+		if (strlen(((struct FileItem *) start->data)->clientIp) > 0)
+		{
+		printf("%-30s   %10s   %-5s    %-20s   %8s\n",
+				((struct FileItem *) start->data)->fileName,
+				((struct FileItem *) start->data)->fileSize,
+				((struct FileItem *) start->data)->clientName,
+				((struct FileItem *) start->data)->clientIp,
+				((struct FileItem *) start->data)->clientPort);
+		}
+		start = start->next;
+	}
 }
 void start_client(char *clientName, char *serverIp, char *serverPort)
 {
@@ -252,18 +329,20 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 	char buf[BUFMAX];
 	memset(buf, '\0', BUFMAX);
 	memcpy(buf,  &client, sizeof(client));
-	struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_CLIENT_TYPE, clientName, buf));
+	struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_CLIENT_TYPE, clientName, buf,BUFMAX));
     if (strcmp(packet.type, REJECT_TYPE) == 0)
     {
     	printf("Client %s already registered.  Exiting.  Try a different name.\n", clientName);
     	exit(0);
     }
 
+    //todo:  need to implement retry logic if server isn't up
+
 
     char *tracker;
     char *sep = " ";
 
-    struct LinkedList *mfl = NULL;
+    mfl = NULL;
 
     fd_set rfds;
     struct timeval tv;
@@ -283,6 +362,7 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
         	printf("> ");
         	fflush(stdout);
         }
+        //http://stackoverflow.com/questions/6418232/how-to-use-select-to-read-input-from-keyboard-in-c
         retval = select(1, &rfds, NULL, NULL, &tv);
 
         if (retval == -1){
@@ -297,6 +377,7 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
              fgets(command, sizeof(command), stdin);
              if (strlen(command) == 0)
              {
+            	 printf("%d", __LINE__);
             	 redoPrompt = 1;
              	continue;
              }
@@ -304,11 +385,13 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
         }
         if (strlen(command) > 0)  // then the user typed a command
         {
+        	printf("%d", __LINE__);
         	redoPrompt = 1;
 			printf("%s\n", command);
 			char *cmd = strtok_r(command, sep, &tracker);
 			if (cmd == NULL)
 			{
+				printf("%d", __LINE__);
 				redoPrompt = 1;
 				continue;
 			}
@@ -343,7 +426,6 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 							((struct FileItem *) start->data)->clientIp,
 							((struct FileItem *) start->data)->clientPort);
 
-					// todo: connect to peer client and get file
 					struct LinkedList *recvPackets = NULL;
 					struct addrinfo hints, *res;
 					memset(&hints, 0, sizeof hints);
@@ -367,7 +449,7 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 							printf("Connection failed. %d %s\n",errno, strerror(errno));
 							return;
 						}
-						struct Packet packet = create_packet(GET_TYPE, clientName, ((struct FileItem *) start->data)->fileName );
+						struct Packet packet = create_packet(GET_TYPE, clientName, ((struct FileItem *) start->data)->fileName, strlen(((struct FileItem *) start->data)->fileName) );
 						send(clientSockfd, &packet, sizeof(struct Packet), 0);
 
 					printf("Receiving data back\n");
@@ -413,69 +495,17 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 					// now write out the file to disk.
 		            FILE *fp = fopen(((struct FileItem *) start->data)->fileName, "w");
 		            fwrite(startOfBuffer, sizeof(char), accumLen,fp);
-//		            fwrite("hello world", sizeof(char), strlen("hello world"),fp);
 		            fclose(fp);
 		            free(startOfBuffer);
+		            freeaddrinfo(res);
+		            close(clientSockfd);
 		            printf("File retrieved!!!\n");
 				}
 
 			}
 			if (strcmp(cmd, "ls") == 0)
 			{
-				struct LinkedList *recvPackets = NULL;
-				send_and_recv_packets(serverIp, serverPort,
-						create_packet(LS_TYPE, clientName, ""), &recvPackets);
-
-				struct LinkedList *start = recvPackets;
-				while (start != NULL)
-				{
-
-					struct Files *recvFiles = malloc(sizeof(struct Files));
-					memcpy(recvFiles,  ((struct Packet *) start->data)->message, sizeof(struct Files));
-		//            char *output = str2md5(packet.message, BUFMAX);
-		//            printf("server md5 hash %s\n", output);
-					int i = 0;
-					int fileCount = atoi(recvFiles->numFiles);
-					for (i = 0; i < fileCount; i++)
-					{
-						printf("Got : %s\n", recvFiles->files[i].fileName);
-						struct FileItem *file = malloc(sizeof(struct FileItem));
-						strncpy(file->clientName, recvFiles->files[i].clientName, sizeof(file->clientName));
-						strncpy(file->fileName, recvFiles->files[i].fileName, sizeof(file->fileName));
-						strncpy(file->fileSize, recvFiles->files[i].fileSize, sizeof(file->fileSize));
-						strncpy(file->clientIp, recvFiles->files[i].clientIp, sizeof(file->clientIp));
-						strncpy(file->clientPort, recvFiles->files[i].clientPort, sizeof(file->clientPort));
-						add_item(&mfl, createFileKey(file), file);
-					}
-
-
-					start = start->next;
-				}
-				// todo:  need to clean up this linked list;
-
-				start = mfl;
-				printf("%-30s   %10s   %-10s    %-20s   %8s\n",
-						"File name",
-						"Size",
-						"Client",
-						"IP",
-						"Port");
-				printf("%-30s   %10s   %-10s    %-20s   %8s\n",
-						"---------------",
-						"---------",
-						"---------",
-						"---------------",
-						"---------");
-				while (start != NULL)
-				{
-					printf("%-30s   %10s   %-5s    %-20s   %8s\n",
-							((struct FileItem *) start->data)->fileName,
-							((struct FileItem *) start->data)->fileSize,
-							((struct FileItem *) start->data)->clientName,
-							((struct FileItem *) start->data)->clientIp,
-							((struct FileItem *) start->data)->clientPort);
-					start = start->next;
-				}
+				ls(clientName, serverIp, serverPort);
 			}
 			if (strcmp(cmd, "send") == 0)
 			{
@@ -525,7 +555,7 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 						char buf[BUFMAX];
 						memset(buf, '\0', BUFMAX);
 						memcpy(buf,  &clientFiles, sizeof(clientFiles));
-						struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_FILE_TYPE, clientName, buf));
+						struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_FILE_TYPE, clientName, buf,BUFMAX));
 						memset(&clientFiles, '\0', sizeof(clientFiles));
 					}
 				}
@@ -546,7 +576,7 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 					char buf[BUFMAX];
 					memset(buf, '\0', BUFMAX);
 					memcpy(buf,  &clientFiles, sizeof(clientFiles));
-					struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_FILE_TYPE, clientName, buf));
+					struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_FILE_TYPE, clientName, buf,BUFMAX));
 					memset(&clientFiles, '\0', sizeof(clientFiles));
 				}
 
@@ -584,7 +614,7 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 				char buf[BUFMAX];
 				memset(buf, '\0', BUFMAX);
 				memcpy(buf,  &client, sizeof(client));
-				struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_CLIENT_TYPE, clientName, buf));
+				struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_CLIENT_TYPE, clientName, buf,BUFMAX));
 			}
 
 			if (strcmp(cmd, "unreg") == 0)
@@ -595,33 +625,23 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 				{
 					clientName = arg;
 				}
-				struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(UNREGISTER_CLIENT_TYPE, clientName, clientName));
+				struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(UNREGISTER_CLIENT_TYPE, clientName, clientName,strlen(clientName)));
 			}
         } // end command processing
         else
         {
         	// look to see if we need to pick up a file
-        	if (send_file())
+        	if (send_file(clientName, serverIp,serverPort))
         	{
+        		printf("%d", __LINE__);
+        		redoPrompt = 1;
         	}
 
         }
-/*
-   		 FD_ZERO(&select_fds);
-   		 FD_SET(sd, &select_fds);
-
-   		 timeout.tv_sec = 0;
-   		 timeout.tv_usec = 50000; // 50ms timeout
-
-   	// set timeout to 50ms
-   		 if (select(sd + 1, &select_fds, NULL,NULL, &timeout) != 0)
-   		 {
-
-   		 }
-   		 */
 
     }
     while (strcmp("exit", command) != 0);
+    //todo:  put unregister here
 
 	freeaddrinfo(res);
 	close(sockfd);

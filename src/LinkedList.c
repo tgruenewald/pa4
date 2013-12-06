@@ -8,15 +8,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <pthread.h>
-void delete_list(struct LinkedList *start)
-{
-	pthread_mutex_lock(&lock);
-	delete_list_no_lock(start);
-	pthread_mutex_unlock(&lock);
-}
 
-void delete_list_no_lock(struct LinkedList *start)
+void delete_list(struct LinkedList *start)
 {
 	while (start != NULL)
 	{
@@ -64,9 +57,7 @@ void add_item(struct LinkedList **start,char *key, void *data)
 	}
 
 	// now at last node
-	pthread_mutex_lock(&lock);
 	struct LinkedList *temp = malloc(sizeof(struct LinkedList));
-	pthread_mutex_unlock(&lock);
 
 	memset(temp,0,sizeof(struct LinkedList));
 	strcpy(temp->key,key);

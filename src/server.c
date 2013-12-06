@@ -229,6 +229,7 @@ int handle_connection(int new_fd)
 			if (client == NULL)
 			{
 				printf("Unable to find client %s\n", clientFiles.files[i].clientName);
+				exit(1);// todo:  not sure if i should do this
 			}
 			else
 			{
@@ -257,7 +258,7 @@ int handle_connection(int new_fd)
 				char buf[BUFMAX];
 				memset(buf, '\0', BUFMAX);
 				memcpy(buf,  &clientFiles, sizeof(clientFiles));
-				struct Packet p = create_packet_with_more(LS_TYPE, "",areThereMore, buf);
+				struct Packet p = create_packet_with_more(LS_TYPE, "",areThereMore, buf,BUFMAX);
 				rc = send(new_fd, &p, sizeof(struct Packet), 0);
 				if (rc == 0)
 				{
@@ -280,7 +281,7 @@ int handle_connection(int new_fd)
 			char buf[BUFMAX];
 			memset(buf, '\0', BUFMAX);
 			memcpy(buf,  &clientFiles, sizeof(clientFiles));
-			struct Packet p = create_packet_with_more(LS_TYPE, "", areThereMore, buf);
+			struct Packet p = create_packet_with_more(LS_TYPE, "", areThereMore, buf,BUFMAX);
 			rc = send(new_fd, &p, sizeof(struct Packet), 0);
 			if (rc == 0)
 			{
@@ -300,6 +301,7 @@ int handle_connection(int new_fd)
 //            printf("server md5 hash %s\n", output);
 		int i = 0;
 		int fileCount = atoi(recvFiles->numFiles);
+		int haveFilesChanged = 0;
 		for (i = 0; i < fileCount; i++)
 		{
 
@@ -309,8 +311,73 @@ int handle_connection(int new_fd)
 			strncpy(file->fileName, recvFiles->files[i].fileName, sizeof(file->fileName));
 			strncpy(file->fileSize, recvFiles->files[i].fileSize, sizeof(file->fileSize));
 
-			add_item(&mfl,createFileKey(file), file );
+			// look to see if this file already exist
+			struct LinkedList *prev = find(mfl, createFileKey(file));
+			if (prev != NULL)
+			{
+				// then look to see if it needs to be updated
+				if (strcmp( ((struct FileItem *) prev->data)->fileSize, file->fileSize ) != 0)
+				{
+					haveFilesChanged = 1;
+					printf("Updateing file size of %s\n", file->fileName);
+					strncpy(((struct FileItem *) prev->data)->fileSize, file->fileSize, sizeof(((struct FileItem *) prev->data)->fileSize) );
+				}
+				free(file);
+
+			}
+			else
+			{
+				// add new file to the list
+				add_item(&mfl,createFileKey(file), file );
+				haveFilesChanged = 1;
+			}
+
 			print_list("File list:", mfl);
+		}
+
+//		if (haveFilesChanged)
+		if (0)  // todo:  need to find out why this isn't working
+		{
+			struct LinkedList *start = clients;
+			while (start != NULL)
+			{
+				{
+					struct addrinfo hints, *res;
+					memset(&hints, 0, sizeof hints);
+					hints.ai_family = AF_UNSPEC;
+					hints.ai_socktype = SOCK_STREAM;
+					printf("Sending updated ls to %s ip = %s, port = %s\n",
+							((struct Client *) start->data)->clientName,
+							((struct Client *) start->data)->clientIp,
+							((struct Client *) start->data)->clientPort);
+
+				    getaddrinfo(((struct Client *) start->data)->clientIp,
+				    		((struct Client *) start->data)->clientPort, &hints, &res);
+					int clientSockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+
+						int rc = connect(clientSockfd, res->ai_addr, res->ai_addrlen);
+						printf("Connection status. %d %s\n",errno, strerror(errno));
+						if (rc != 0 && errno != EISCONN)
+						{
+							printf("Connection failed. %d %s\n",errno, strerror(errno));
+							return 1;
+						}
+						char buf[BUFMAX];
+						memset(buf,'\0', BUFMAX);
+						strcpy(buf,"ls");
+						struct Packet packet = create_packet(LS_TYPE, ((struct Client *) start->data)->clientName, buf,BUFMAX);
+						rc = send(clientSockfd, &packet, sizeof(struct Packet), 0);
+						printf("Connection status. %d %s\n",errno, strerror(errno));
+						if (rc == -1 && errno != EISCONN)
+						{
+							printf("Send failed. %d %s\n",errno, strerror(errno));
+							return 1;
+						}
+						close(clientSockfd);
+			            freeaddrinfo(res);
+				}
+				start = start->next;
+			}
 		}
 
 
@@ -339,19 +406,18 @@ int handle_connection(int new_fd)
 		memset(client, '\0', sizeof(struct Client));
 		memcpy(client, packet.message, sizeof(struct Client));
 		memset(client->clientIp, '\0', sizeof(client->clientIp));
-		get_client_ip(new_fd, client->clientIp);
+		get_client_ip(new_fd, client->clientIp);  // http://www.beej.us/guide/bgnet/output/html/multipage/getpeernameman.html
 		printf("client port = %s, ip = %s\n", client->clientPort, client->clientIp);
 		// first check if already registered
 		struct LinkedList *prevClient = find(clients, client->clientName);
 		if (prevClient != NULL)
 		{
 			strncpy(packet.type, REJECT_TYPE, sizeof packet.type);
+			free(client);
 		}
 		else
 		{
 			// then new client, so add to list.
-			// http://www.beej.us/guide/bgnet/output/html/multipage/getpeernameman.html
-			// figure out ip and port:
 			add_item(&clients,client->clientName, client);
 			strncpy(packet.type, OK_TYPE, sizeof packet.type);
 			print_list("Client list:", clients);
@@ -370,7 +436,7 @@ int handle_connection(int new_fd)
 		}
 		else
 		{
-			// then new client, so add to list.
+			// then remove existing client from list
 			struct Client *freeMe = (struct Client *) remove_item(&clients, ((struct Client *) prevClient->data)->clientName);
 			free(freeMe);
 			strncpy(packet.type, OK_TYPE, sizeof packet.type);

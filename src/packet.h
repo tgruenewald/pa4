@@ -61,8 +61,8 @@ int incommingFileGetSockFd;
 #define REJECT_TYPE "reject"
 #define OK_TYPE "ok"
 
-struct Packet create_packet(char *type, char *from, char *msg);
-struct Packet create_packet_with_more(char *type, char *from, char *more, char *msg);
+struct Packet create_packet(char *type, char *from, char *msg, int bytesToSend);
+struct Packet create_packet_with_more(char *type, char *from, char *more, char *msg,int bytesToSend);
 void print_packet(struct Packet packet);
 struct Packet send_and_recv_packet(char *ip, char *port, struct Packet packet);
 void send_and_recv_packets(char *ip, char *port, struct Packet packet, struct LinkedList **recvPackets);

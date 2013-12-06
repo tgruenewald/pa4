@@ -34,11 +34,13 @@ char *createFileKey(struct FileItem *file)
 	sprintf(key, "%s:%s", file->clientName, file->fileName);
 	return key;
 }
-struct Packet create_packet(char *type, char *from, char *msg)
+
+
+struct Packet create_packet(char *type, char *from, char *msg, int bytesToSend)
 {
-	return create_packet_with_more(type,from,"",msg);
+	return create_packet_with_more(type,from,"",msg,bytesToSend);
 }
-struct Packet create_packet_with_more(char *type, char *from, char *more, char *msg)
+struct Packet create_packet_with_more(char *type, char *from, char *more, char *msg, int bytesToSend)
 {
     struct Packet packet;
     memset(&packet, 0, sizeof(struct Packet));
@@ -46,7 +48,7 @@ struct Packet create_packet_with_more(char *type, char *from, char *more, char *
     strncpy(packet.type, type, sizeof(packet.type));
     strncpy(packet.from, from, sizeof(packet.from));
     strncpy(packet.areThereMore,more, sizeof(packet.areThereMore));
-    memcpy(packet.message, msg,BUFMAX);
+    memcpy(packet.message, msg,bytesToSend);
     sprintf(packet.length,"%d", strlen(packet.message));
     return packet;
 }
@@ -94,7 +96,8 @@ struct Packet send_and_recv_packet(char *ip, char *port, struct Packet packet)
 	if (rc != 0 && errno != EISCONN)
 	{
 		printf("Connection failed. %d %s\n",errno, strerror(errno));
-		return create_packet(REJECT_TYPE,"","Connection failed");
+		char *msg = "Connection failed";
+		return create_packet(REJECT_TYPE,"",msg,strlen(msg));
 	}
 
 	rc = send(sockfd, &packet, sizeof(struct Packet), 0);  // todo:  if any of these rc's return 1, I need to reconnect and reregister the client with the new port
