@@ -1,8 +1,0 @@
-1.txt
-2.txt
-b
-makefile
-objects.mk
-pa4
-sources.mk
-src
