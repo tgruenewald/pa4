@@ -41,6 +41,7 @@ struct Packet create_packet(char *type, char *from, char *msg)
 struct Packet create_packet_with_more(char *type, char *from, char *more, char *msg)
 {
     struct Packet packet;
+    memset(&packet, 0, sizeof(struct Packet));
     memset(packet.message, '\0', BUFMAX);
     strncpy(packet.type, type, sizeof(packet.type));
     strncpy(packet.from, from, sizeof(packet.from));
@@ -58,18 +59,18 @@ void print_packet(struct Packet packet)
 
 	if (strcmp(packet.type, LS_TYPE) == 0 || strcmp(packet.type, REGISTER_FILE_TYPE) == 0)
 	{
-		struct Files *recvFiles = malloc(sizeof(struct Files));
-		memcpy(recvFiles, packet.message, sizeof(struct Files));
+		struct Files recvFiles;
+		memcpy(&recvFiles, packet.message, sizeof(struct Files));
 //            char *output = str2md5(packet.message, BUFMAX);
 //            printf("server md5 hash %s\n", output);
 		int i = 0;
-		int fileCount = atoi(recvFiles->numFiles);
+		int fileCount = atoi(recvFiles.numFiles);
 		for (i = 0; i < fileCount; i++)
 		{
 			printf("   File:  %s,  size  %s,  client %s\n",
-					recvFiles->files[i].fileName,
-					recvFiles->files[i].fileSize,
-					recvFiles->files[i].clientName);
+					recvFiles.files[i].fileName,
+					recvFiles.files[i].fileSize,
+					recvFiles.files[i].clientName);
 		}
 	}
 }

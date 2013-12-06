@@ -4,27 +4,21 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../src/LinkStatePacket.c \
 ../src/LinkedList.c \
-../src/Routing.c \
 ../src/client.c \
 ../src/packet.c \
 ../src/routed_LS.c \
 ../src/server.c 
 
 OBJS += \
-./src/LinkStatePacket.o \
 ./src/LinkedList.o \
-./src/Routing.o \
 ./src/client.o \
 ./src/packet.o \
 ./src/routed_LS.o \
 ./src/server.o 
 
 C_DEPS += \
-./src/LinkStatePacket.d \
 ./src/LinkedList.d \
-./src/Routing.d \
 ./src/client.d \
 ./src/packet.d \
 ./src/routed_LS.d \

@@ -18,8 +18,6 @@
 #include <signal.h>
 #include <unistd.h>
 #include <pthread.h>
-#include "LinkStatePacket.h"
-#include "Routing.h"
 #include "packet.h"
 #include "const.h"
 #include <assert.h>

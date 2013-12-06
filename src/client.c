@@ -21,8 +21,6 @@
 #include <signal.h>
 #include <unistd.h>
 #include <pthread.h>
-#include "LinkStatePacket.h"
-#include "Routing.h"
 #include "const.h"
 #include "packet.h"
 #include <assert.h>
@@ -78,6 +76,7 @@ void setup_socket_for_getting_files(char *port, char *ip)
 
     sprintf(ip, "%d.%d.%d.%d", NIPQUAD(ouraddr.sin_addr.s_addr));
     sprintf(port, "%d", ntohs(ouraddr.sin_port));
+    freeaddrinfo(res);
 
 }
 int send_file()
@@ -110,89 +109,112 @@ int send_file()
     if (FD_ISSET(incommingFileGetSockFd, &rfds))
     {
     	ret = 1;
-    	printf("Accepting new connection\n");
+//    	printf("Accepting new connection\n");
         if ((new_socket = accept(incommingFileGetSockFd, (struct sockaddr *) &their_addr, &addr_size))<0)
         {
             perror("accept");
             exit(EXIT_FAILURE);
         }
 
-        // now send the file, probably should fork here
-        printf("examing the request to share my file\n");
-    	int rc = 0;
-    	struct Packet packet;
-    	rc = recv(new_socket, &packet, sizeof(struct Packet), 0);
-    	if (rc < 0)
-    	{
-    		printf("bad rc = %d\n",rc);
-    		exit(1);
-    	}
-    	if (rc == 0)
-    	{
-    		printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
-    		return ret;
-    	}
-    	printf("Recvd\n");
-    	print_packet(packet);
-
-    	// read the file from disk
-        FILE *fp = fopen(packet.message, "r");
-        fseek(fp, 0L, SEEK_END);
-        int fileSize = ftell(fp);
-        fseek(fp, 0L, SEEK_SET);
-
-        char *buffer; // todo:  this should probably be unsigned char
-        char *startBuf = buffer;
-        buffer = malloc(fileSize);
-        if (fread(buffer, sizeof(*buffer), fileSize,fp) != fileSize)
+        int pid = fork();
+        if (pid < 0)
         {
-            perror("Mismatched read.  Not all bytes were read");
-            free(buffer);
-            exit(1);
+        	perror("Error forking");
+        	exit(1);
         }
-        fclose(fp);
-        int bytesSent = 0;
-        char buf[BUFMAX];
-        while (bytesSent < fileSize)
+
+        if (pid == 0)
         {
-        	char more[YN_LEN];
-        	memset(buf,'\0', BUFMAX);
-        	int sent = 0;
-        	if (bytesSent + BUFMAX > fileSize)
-        	{
-        		// then this will be the last packet
-        		strcpy(more,"n");
-        		printf("Sending last packet:  %d bytes will be sent\n",(fileSize-bytesSent ));
-//        		memcpy(buf,buffer, fileSize-bytesSent);
-        		memcpy(buf,"123456789012", fileSize-bytesSent);
-        		printf("Sending [%s]\n", buf);
-        		sent = (fileSize-bytesSent);
-        		bytesSent = bytesSent + sent;
-        	}
-        	else
-        	{
-        		// still more to go
-        		strcpy(more,"y");
-        		memcpy(buf, buffer,BUFMAX);
-        		sent = BUFMAX;
-        		bytesSent = bytesSent + sent;
-        	}
+        	// in child process
+        	close(incommingFileGetSockFd);
+			// now send the file, probably should fork here
+//			printf("examing the request to share my file\n");
+			int rc = 0;
+			struct Packet packet;
+			rc = recv(new_socket, &packet, sizeof(struct Packet), 0);
+			if (rc < 0)
+			{
+				printf("bad rc = %d\n",rc);
+				close(new_socket);
+				exit(1);
+			}
+			if (rc == 0)
+			{
+				printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
+				close(new_socket);
+				exit(0);
+			}
+//			printf("Recvd\n");
+//			print_packet(packet);
+
+			// read the file from disk
+			FILE *fp = fopen(packet.message, "r");
+			fseek(fp, 0L, SEEK_END);
+			int fileSize = ftell(fp);
+			fseek(fp, 0L, SEEK_SET);
+
+			char *buffer = malloc(fileSize);
+			char *startBuf = buffer;
+			if (fread(buffer, sizeof(*buffer), fileSize,fp) != fileSize)
+			{
+				perror("Mismatched read.  Not all bytes were read");
+				fclose(fp);
+				close(new_socket);
+				free(buffer);
+				exit(1);
+			}
+			fclose(fp);
+			int bytesSent = 0;
+			char buf[BUFMAX];
+			while (bytesSent < fileSize)
+			{
+				char more[YN_LEN];
+				memset(buf,'\0', BUFMAX);
+				int sent = 0;
+				if (bytesSent + BUFMAX > fileSize)
+				{
+					// then this will be the last packet
+					strcpy(more,"n");
+//					printf("Sending last packet:  %d bytes will be sent\n",(fileSize-bytesSent ));
+					memcpy(buf,buffer, fileSize-bytesSent);
+	//        		memcpy(buf,"123456789012", fileSize-bytesSent);
+					//printf("Sending [%s]\n", buf);
+					sent = (fileSize-bytesSent);
+					bytesSent = bytesSent + sent;
+				}
+				else
+				{
+					// still more to go
+					strcpy(more,"y");
+					memcpy(buf, buffer,BUFMAX);
+					sent = BUFMAX;
+					bytesSent = bytesSent + sent;
+				}
 
 
-        	struct Packet packet = create_packet_with_more(GET_TYPE, "",more, buf);
-        	sprintf(packet.length,"%d", sent);
-    		rc = send(new_socket, &packet, sizeof(struct Packet), 0);
-    		if (rc == 0)
-    		{
-    			printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
-    			return ret;
-    		}
+				struct Packet packet = create_packet_with_more(GET_TYPE, "",more, buf);
+				sprintf(packet.length,"%d", sent);
+				rc = send(new_socket, &packet, sizeof(struct Packet), 0);
+				if (rc == 0)
+				{
+					printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
+					free(startBuf);
+					close(new_socket);
+					exit(0);
+				}
 
-    		buffer = buffer + BUFMAX;
+				buffer = buffer + BUFMAX;
 
+			}
+			free(startBuf);
+			close(new_socket);
+			exit(0);
+        }  // end child process
+        else
+        {
+        	// parent process
+        	close(new_socket);
         }
-        free(startBuf);
-    	close(new_socket);
     }
 
     return ret;
@@ -274,7 +296,10 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 
              fgets(command, sizeof(command), stdin);
              if (strlen(command) == 0)
+             {
+            	 redoPrompt = 1;
              	continue;
+             }
              command[strlen(command) -1] = '\0'; // strip off the newline
         }
         if (strlen(command) > 0)  // then the user typed a command
@@ -283,7 +308,10 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 			printf("%s\n", command);
 			char *cmd = strtok_r(command, sep, &tracker);
 			if (cmd == NULL)
+			{
+				redoPrompt = 1;
 				continue;
+			}
 
 			if (strcmp(cmd, "get") == 0)
 			{
@@ -348,8 +376,17 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 					char *startOfBuffer = fileContentsBuffer;
 					memset(fileContentsBuffer, '\0', fileSize);
 					int accumLen = 0;
+
 					do
 					{
+						if (fileSize > 0)
+						{
+							float progress = ((float) accumLen/fileSize) * 100.0;
+							if (( ((int) progress) % 10) == 0)
+							{
+								printf("Progress %3.1f%%\n\033[F\033[J", progress);
+							}
+						}
 						struct Packet recvPacket;
 						int rc = recv(clientSockfd, &recvPacket, sizeof(struct Packet), 0);
 						if (rc < 0)
@@ -357,6 +394,11 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 							printf("bad rc = %d\n",rc);
 							exit(1);
 						}
+
+//						char b[BUFMAX + 1];
+//						memset(b,'\0',BUFMAX + 1);
+//						memcpy(b, recvPacket.message, atoi(recvPacket.length));
+						//printf("recvd message len = %s\n", recvPacket.length);
 
 						memcpy(fileContentsBuffer, recvPacket.message, atoi(recvPacket.length));
 						fileContentsBuffer = fileContentsBuffer + atoi(recvPacket.length);
@@ -366,13 +408,15 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 							break;
 					}
 					while (1);
-
+					printf("Progress 100%%\n");
+					printf("Writing file to disk\n");
 					// now write out the file to disk.
 		            FILE *fp = fopen(((struct FileItem *) start->data)->fileName, "w");
-		            fwrite(fileContentsBuffer, sizeof(char), accumLen,fp);
+		            fwrite(startOfBuffer, sizeof(char), accumLen,fp);
 //		            fwrite("hello world", sizeof(char), strlen("hello world"),fp);
 		            fclose(fp);
 		            free(startOfBuffer);
+		            printf("File retrieved!!!\n");
 				}
 
 			}
@@ -410,9 +454,21 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 				// todo:  need to clean up this linked list;
 
 				start = mfl;
+				printf("%-30s   %10s   %-10s    %-20s   %8s\n",
+						"File name",
+						"Size",
+						"Client",
+						"IP",
+						"Port");
+				printf("%-30s   %10s   %-10s    %-20s   %8s\n",
+						"---------------",
+						"---------",
+						"---------",
+						"---------------",
+						"---------");
 				while (start != NULL)
 				{
-					printf("%-20s   %10s   %-5s    %-20s   %8s\n",
+					printf("%-30s   %10s   %-5s    %-20s   %8s\n",
 							((struct FileItem *) start->data)->fileName,
 							((struct FileItem *) start->data)->fileSize,
 							((struct FileItem *) start->data)->clientName,
@@ -547,7 +603,6 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
         	// look to see if we need to pick up a file
         	if (send_file())
         	{
-        		redoPrompt = 1;
         	}
 
         }

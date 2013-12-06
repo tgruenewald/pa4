@@ -23,9 +23,6 @@
 #include <time.h> /* select() */
 #include <signal.h>
 #include <unistd.h>
-#include <pthread.h>
-#include "LinkStatePacket.h"
-#include "Routing.h"
 #include "const.h"
 #include <assert.h>
 #include <signal.h>

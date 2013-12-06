@@ -2,3 +2,9 @@
 *.o
 
 Debug/src/packet.o
+
+*.d
+
+*.o
+
+Debug/b/pa4
