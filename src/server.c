@@ -128,7 +128,8 @@ void start_server(char *port)
         if (FD_ISSET(master_socket, &readfds))
         {
         	printf("Accepting new connection\n");
-            if ((new_socket = accept(master_socket, (struct sockaddr *) &their_addr, &addr_size))<0)
+            new_socket = accept(master_socket, (struct sockaddr *) &their_addr, &addr_size);
+            if (new_socket < 0)
             {
                 perror("accept");
                 exit(EXIT_FAILURE);
@@ -200,12 +201,12 @@ int handle_connection(int new_fd)
 	rc = recv(new_fd, &packet, sizeof(struct Packet), 0);
 	if (rc < 0)
 	{
-		printf("bad rc = %d\n",rc);
+		printf("ERROR:  rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
 		exit(1);
 	}
 	if (rc == 0)
 	{
-		printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
+		printf("ERROR:  rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
 		return 1;
 	}
 	printf("Recvd\n");
@@ -228,7 +229,7 @@ int handle_connection(int new_fd)
 			struct LinkedList *client = find(clients, clientFiles.files[i].clientName);
 			if (client == NULL)
 			{
-				printf("Unable to find client %s\n", clientFiles.files[i].clientName);
+				printf("ERROR:  Unable to find client %s\n", clientFiles.files[i].clientName);
 				exit(1);// todo:  not sure if i should do this
 			}
 			else
@@ -262,7 +263,7 @@ int handle_connection(int new_fd)
 				rc = send(new_fd, &p, sizeof(struct Packet), 0);
 				if (rc == 0)
 				{
-					printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
+					printf("ERROR:  rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
 					return 1;
 				}
 				memset(&clientFiles, '\0', sizeof(clientFiles));
@@ -271,7 +272,7 @@ int handle_connection(int new_fd)
 			start = start->next;
 		}
 
-		if (i >= 0)
+		if (i > 0)
 		{
 			// then send the last files
 			strcpy(areThereMore, "n");
@@ -285,7 +286,7 @@ int handle_connection(int new_fd)
 			rc = send(new_fd, &p, sizeof(struct Packet), 0);
 			if (rc == 0)
 			{
-				printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
+				printf("ERROR:  rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
 				return 1;
 			}
 			memset(&clientFiles, '\0', sizeof(clientFiles));
@@ -335,49 +336,9 @@ int handle_connection(int new_fd)
 			print_list("File list:", mfl);
 		}
 
-//		if (haveFilesChanged)
-		if (0)  // todo:  need to find out why this isn't working
+		if (haveFilesChanged)
 		{
-			struct LinkedList *start = clients;
-			while (start != NULL)
-			{
-				{
-					struct addrinfo hints, *res;
-					memset(&hints, 0, sizeof hints);
-					hints.ai_family = AF_UNSPEC;
-					hints.ai_socktype = SOCK_STREAM;
-					printf("Sending updated ls to %s ip = %s, port = %s\n",
-							((struct Client *) start->data)->clientName,
-							((struct Client *) start->data)->clientIp,
-							((struct Client *) start->data)->clientPort);
-
-				    getaddrinfo(((struct Client *) start->data)->clientIp,
-				    		((struct Client *) start->data)->clientPort, &hints, &res);
-					int clientSockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-
-						int rc = connect(clientSockfd, res->ai_addr, res->ai_addrlen);
-						printf("Connection status. %d %s\n",errno, strerror(errno));
-						if (rc != 0 && errno != EISCONN)
-						{
-							printf("Connection failed. %d %s\n",errno, strerror(errno));
-							return 1;
-						}
-						char buf[BUFMAX];
-						memset(buf,'\0', BUFMAX);
-						strcpy(buf,"ls");
-						struct Packet packet = create_packet(LS_TYPE, ((struct Client *) start->data)->clientName, buf,BUFMAX);
-						rc = send(clientSockfd, &packet, sizeof(struct Packet), 0);
-						printf("Connection status. %d %s\n",errno, strerror(errno));
-						if (rc == -1 && errno != EISCONN)
-						{
-							printf("Send failed. %d %s\n",errno, strerror(errno));
-							return 1;
-						}
-						close(clientSockfd);
-			            freeaddrinfo(res);
-				}
-				start = start->next;
-			}
+			resend_updated_file_list();
 		}
 
 
@@ -456,6 +417,8 @@ int handle_connection(int new_fd)
 				}
 				start = start->next;
 			}
+
+			resend_updated_file_list();
 		}
 	}
 
@@ -464,11 +427,54 @@ int handle_connection(int new_fd)
 	rc = send(new_fd, &packet, sizeof(struct Packet), 0);
 	if (rc == 0)
 	{
-		printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
+		printf("ERROR:  rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
 		return 1;
 	}
 	printf("Sent.\n");
 	return 0;
+}
+void resend_updated_file_list()
+{
+	struct LinkedList *start = clients;
+	while (start != NULL)
+	{
+		{
+			struct addrinfo hints, *res;
+			memset(&hints, 0, sizeof hints);
+			hints.ai_family = AF_UNSPEC;
+			hints.ai_socktype = SOCK_STREAM;
+			printf("Sending updated ls to %s ip = %s, port = %s\n",
+					((struct Client *) start->data)->clientName,
+					((struct Client *) start->data)->clientIp,
+					((struct Client *) start->data)->clientPort);
+
+		    getaddrinfo(((struct Client *) start->data)->clientIp,
+		    		((struct Client *) start->data)->clientPort, &hints, &res);
+			int clientSockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+
+				int rc = connect(clientSockfd, res->ai_addr, res->ai_addrlen);
+				printf("Connection status. %d %s\n",errno, strerror(errno));
+				if (rc != 0 && errno != EISCONN)
+				{
+					printf("ERROR:  rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
+					return;
+				}
+				char buf[BUFMAX];
+				memset(buf,'\0', BUFMAX);
+				strcpy(buf,"ls");
+				struct Packet packet = create_packet(LS_TYPE, ((struct Client *) start->data)->clientName, buf,BUFMAX);
+				rc = send(clientSockfd, &packet, sizeof(struct Packet), 0);
+				printf("Connection status. %d %s\n",errno, strerror(errno));
+				if (rc == -1 && errno != EISCONN)
+				{
+					printf("ERROR:  rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
+					return;
+				}
+				close(clientSockfd);
+	            freeaddrinfo(res);
+		}
+		start = start->next;
+	}
 }
 void get_client_ip(int s, char *client_ip)
 {
@@ -497,86 +503,5 @@ void get_client_ip(int s, char *client_ip)
 	strcpy(client_ip, ipstr);
 }
 
-// deprecated
-/*
-void _start_server(char *port)
-{
-
-	// start listening on the port.   When a request comes in, parse the packet to determine the request type
-
-	// ls
-
-	// reg_name
-	// dereg_name
-
-	// add files
-	// remove files
-
-//
-//	struct LinkedList *clients = NULL;  // keyed by client name.
-//	struct LinkedList *mfl = NULL;  // master file list.  keyed by filename
-
-	struct sockaddr_storage their_addr;
-	struct addrinfo hints, *res;
-	socklen_t addr_size;
-	int new_fd;
-
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_UNSPEC; // use IPv4 or IPv6, whichever
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE; // fill in my IP for me
-
-	getaddrinfo(NULL, port, &hints, &res);
-
-	// make a socket, bind it, and listen on it:
-
-	sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-	bind(sockfd, res->ai_addr, res->ai_addrlen);
-	listen(sockfd, BACKLOG);
-
-	// now accept an incoming connection:
-	addr_size = sizeof their_addr;
-	int rc = 0;
-	int pid;
-	while (1)
-	{
-		struct sockaddr_storage their_addr;
-		struct addrinfo hints, *res;
-		socklen_t addr_size;
-		addr_size = sizeof their_addr;
-		// only accept a connection if we need to.
-		printf("Waiting on accept\n");
-		new_fd = accept(sockfd, (struct sockaddr *) &their_addr, &addr_size);
-		printf("Accepted\n");
-
-		//http://www.binarytides.com/multiple-socket-connections-fdset-select-linux/
-
-
-//		// http://www.tutorialspoint.com/unix_sockets/socket_server_example.htm
-//		pid = fork();
-//		if (pid < 0)
-//		{
-//			perror("ERROR on fork");
-//			exit(1);
-//		}
-//		if (pid == 0)
-//		{
-//			close(sockfd);
-//			printf("Spawning new process:  %d\n");
-//			handle_client(new_fd);
-//
-//
-//			exit(0);
-//		}
-//		else
-//		{
-//			close(new_fd);
-//		}
-
-	}
-
-}
-
-*/
 
 

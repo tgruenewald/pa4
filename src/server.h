@@ -12,6 +12,7 @@ void start_server(char *port);
 void _start_server(char *port); // deprecated
 int handle_connection(int new_fd);
 void get_client_ip(int s, char *client_ip);
+void resend_updated_file_list();
 
 struct LinkedList *clients;  // keyed by client name.
 struct LinkedList *mfl;  // master file list.  keyed by filename

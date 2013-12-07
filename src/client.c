@@ -20,7 +20,6 @@
 #include <time.h> /* select() */
 #include <signal.h>
 #include <unistd.h>
-#include <pthread.h>
 #include "const.h"
 #include "packet.h"
 #include <assert.h>
@@ -110,7 +109,8 @@ int send_file(char *clientName, char *serverIp, char *serverPort)
     {
 
 //    	printf("Accepting new connection\n");
-        if ((new_socket = accept(incommingFileGetSockFd, (struct sockaddr *) &their_addr, &addr_size))<0)
+    	new_socket = accept(incommingFileGetSockFd, (struct sockaddr *) &their_addr, &addr_size);
+        if (new_socket<0)
         {
             perror("accept");
             exit(EXIT_FAILURE);
@@ -120,13 +120,13 @@ int send_file(char *clientName, char *serverIp, char *serverPort)
 		rc = recv(new_socket, &packet, sizeof(struct Packet), 0);
 		if (rc < 0)
 		{
-			printf("bad rc = %d\n",rc);
+			printf("rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
 			close(new_socket);
 			exit(1);
 		}
 		if (rc == 0)
 		{
-			printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
+			printf("rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
 			close(new_socket);
 			exit(0);
 		}
@@ -134,6 +134,7 @@ int send_file(char *clientName, char *serverIp, char *serverPort)
 
 		if (strcmp(packet.type, LS_TYPE) == 0)
 		{
+			close(new_socket);
 			ret = 1;
 			ls(clientName, serverIp, serverPort);
 		}
@@ -150,12 +151,6 @@ int send_file(char *clientName, char *serverIp, char *serverPort)
 			{
 				// in child process
 				close(incommingFileGetSockFd);
-				// now send the file, probably should fork here
-	//			printf("examing the request to share my file\n");
-
-	//			printf("Recvd\n");
-	//			print_packet(packet);
-				// examine packet to see if it is a get of an ls push
 				if (strcmp(packet.type, GET_TYPE) == 0)
 				{
 
@@ -209,7 +204,7 @@ int send_file(char *clientName, char *serverIp, char *serverPort)
 						rc = send(new_socket, &packet, sizeof(struct Packet), 0);
 						if (rc == 0)
 						{
-							printf("rc = %d, errno= %d %s\n",rc,errno, strerror(errno));
+							printf("rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
 							free(startBuf);
 							close(new_socket);
 							exit(0);
@@ -235,6 +230,79 @@ int send_file(char *clientName, char *serverIp, char *serverPort)
     return ret;
 }
 
+void send_file_list(char *clientName, char *serverIp, char *serverPort)
+{
+	// from http://www.lemoda.net/c/list-directory/index.html
+	// send files to the server
+	DIR * d;
+	char * dir_name = ".";
+
+	/* Open the current directory. */
+
+	d = opendir (dir_name);
+
+	if (! d) {
+		fprintf (stderr, "Cannot open directory '%s': %s\n",
+				 dir_name, strerror (errno));
+		exit (EXIT_FAILURE);
+	}
+
+	struct Files clientFiles;
+	memset(&clientFiles, '\0', sizeof(clientFiles));
+	int i = 0;
+	while (1)
+	{
+		struct dirent * entry;
+
+		entry = readdir (d);
+		if (! entry) {
+			break;
+		}
+		if (entry->d_type == DT_REG && i < MAX_FILE_COUNT)
+		{
+			struct stat st;
+			stat(entry->d_name, &st);
+			printf ("sending %s, size = %d\n", entry->d_name, (int) st.st_size);
+			strncpy(clientFiles.files[i].clientName, clientName, sizeof(clientFiles.files[i].clientName));
+			strncpy(clientFiles.files[i].fileName, entry->d_name, sizeof(clientFiles.files[i].fileName));
+			sprintf(clientFiles.files[i].fileSize, "%d",(int) st.st_size);
+
+			i++;
+		}
+
+		if (i == MAX_FILE_COUNT)
+		{
+			sprintf(clientFiles.numFiles,"%d", i);
+			i = 0;
+			// now send the files and start over.
+			char buf[BUFMAX];
+			memset(buf, '\0', BUFMAX);
+			memcpy(buf,  &clientFiles, sizeof(clientFiles));
+			struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_FILE_TYPE, clientName, buf,BUFMAX));
+			memset(&clientFiles, '\0', sizeof(clientFiles));
+		}
+	}
+	/* Close the directory. */
+	if (closedir (d)) {
+		fprintf (stderr, "Could not close '%s': %s\n",
+				 dir_name, strerror (errno));
+		exit (EXIT_FAILURE);
+	}
+
+	if (i > 0)
+	{
+		// then there were a few more to send
+		printf("A few more to send\n");
+		sprintf(clientFiles.numFiles,"%d", i);
+		i = 0;
+		// now send the files and start over.
+		char buf[BUFMAX];
+		memset(buf, '\0', BUFMAX);
+		memcpy(buf,  &clientFiles, sizeof(clientFiles));
+		struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_FILE_TYPE, clientName, buf,BUFMAX));
+		memset(&clientFiles, '\0', sizeof(clientFiles));
+	}
+}
 void ls(char *clientName, char *serverIp, char *serverPort)
 {
 	delete_list(mfl);
@@ -249,8 +317,6 @@ void ls(char *clientName, char *serverIp, char *serverPort)
 
 		struct Files *recvFiles = malloc(sizeof(struct Files));
 		memcpy(recvFiles,  ((struct Packet *) start->data)->message, sizeof(struct Files));
-//            char *output = str2md5(packet.message, BUFMAX);
-//            printf("server md5 hash %s\n", output);
 		int i = 0;
 		int fileCount = atoi(recvFiles->numFiles);
 		for (i = 0; i < fileCount; i++)
@@ -293,6 +359,10 @@ void ls(char *clientName, char *serverIp, char *serverPort)
 				((struct FileItem *) start->data)->clientIp,
 				((struct FileItem *) start->data)->clientPort);
 		}
+		else
+		{
+			printf("empty client ip for file %s client %s\n", ((struct FileItem *) start->data)->fileName, ((struct FileItem *) start->data)->clientName);
+		}
 		start = start->next;
 	}
 }
@@ -307,13 +377,6 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 
     getaddrinfo(serverIp, serverPort, &hints, &res);
 	sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-//    struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_CLIENT_TYPE, clientName, clientName));
-//
-//    if (strcmp(packet.type, REJECT_TYPE) == 0)
-//    {
-//    	printf("Client %s already registered.  Exiting.  Try a different name.\n", clientName);
-//    	exit(0);
-//    }
 
     // setup socket for getting files
     memset(clientFileListeningPort, '\0', sizeof(clientFileListeningPort));
@@ -329,15 +392,15 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 	char buf[BUFMAX];
 	memset(buf, '\0', BUFMAX);
 	memcpy(buf,  &client, sizeof(client));
-	struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_CLIENT_TYPE, clientName, buf,BUFMAX));
-    if (strcmp(packet.type, REJECT_TYPE) == 0)
+	struct Packet p = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_CLIENT_TYPE, clientName, buf,BUFMAX));
+    if (strcmp(p.type, REJECT_TYPE) == 0)
     {
     	printf("Client %s already registered.  Exiting.  Try a different name.\n", clientName);
     	exit(0);
     }
 
-    //todo:  need to implement retry logic if server isn't up
-
+    // send list of files in the current directory to the server
+    send_file_list(clientName, serverIp, serverPort);
 
     char *tracker;
     char *sep = " ";
@@ -377,7 +440,6 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
              fgets(command, sizeof(command), stdin);
              if (strlen(command) == 0)
              {
-            	 printf("%d", __LINE__);
             	 redoPrompt = 1;
              	continue;
              }
@@ -385,13 +447,11 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
         }
         if (strlen(command) > 0)  // then the user typed a command
         {
-        	printf("%d", __LINE__);
         	redoPrompt = 1;
 			printf("%s\n", command);
 			char *cmd = strtok_r(command, sep, &tracker);
 			if (cmd == NULL)
 			{
-				printf("%d", __LINE__);
 				redoPrompt = 1;
 				continue;
 			}
@@ -409,7 +469,8 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 				struct LinkedList *start = mfl;
 				while (start != NULL)
 				{
-					if (strcmp(fileToGet, ((struct FileItem *) start->data)->fileName ) == 0)
+					if (strcmp(fileToGet, ((struct FileItem *) start->data)->fileName ) == 0 &&
+							strcmp(clientName,((struct FileItem *) start->data)->clientName ))  // don't get from yourself. that's silly
 					{
 						break;
 					}
@@ -435,18 +496,13 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 				    getaddrinfo(((struct FileItem *) start->data)->clientIp,
 				    		((struct FileItem *) start->data)->clientPort, &hints, &res);
 					int clientSockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-//					send_and_recv_packets(clientSockfd,
-//							((struct FileItem *) start->data)->clientIp,
-//					        ((struct FileItem *) start->data)->clientPort,
-//					        create_packet("get", clientName, ((struct FileItem *) start->data)->fileName ),
-//					        &recvPackets);
 
 
 						int rc = connect(clientSockfd, res->ai_addr, res->ai_addrlen);
 						printf("Connection status. %d %s\n",errno, strerror(errno));
 						if (rc != 0 && errno != EISCONN)
 						{
-							printf("Connection failed. %d %s\n",errno, strerror(errno));
+							printf("rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
 							return;
 						}
 						struct Packet packet = create_packet(GET_TYPE, clientName, ((struct FileItem *) start->data)->fileName, strlen(((struct FileItem *) start->data)->fileName) );
@@ -473,14 +529,9 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 						int rc = recv(clientSockfd, &recvPacket, sizeof(struct Packet), 0);
 						if (rc < 0)
 						{
-							printf("bad rc = %d\n",rc);
+							printf("rc = %d, errno= %d %s on line %d\n",rc,errno, strerror(errno),__LINE__);
 							exit(1);
 						}
-
-//						char b[BUFMAX + 1];
-//						memset(b,'\0',BUFMAX + 1);
-//						memcpy(b, recvPacket.message, atoi(recvPacket.length));
-						//printf("recvd message len = %s\n", recvPacket.length);
 
 						memcpy(fileContentsBuffer, recvPacket.message, atoi(recvPacket.length));
 						fileContentsBuffer = fileContentsBuffer + atoi(recvPacket.length);
@@ -509,131 +560,15 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 			}
 			if (strcmp(cmd, "send") == 0)
 			{
-				// from http://www.lemoda.net/c/list-directory/index.html
-				// send files to the server
-				DIR * d;
-				char * dir_name = ".";
-
-				/* Open the current directory. */
-
-				d = opendir (dir_name);
-
-				if (! d) {
-					fprintf (stderr, "Cannot open directory '%s': %s\n",
-							 dir_name, strerror (errno));
-					exit (EXIT_FAILURE);
-				}
-
-				struct Files clientFiles;
-				memset(&clientFiles, '\0', sizeof(clientFiles));
-				int i = 0;
-				while (1)
-				{
-					struct dirent * entry;
-
-					entry = readdir (d);
-					if (! entry) {
-						break;
-					}
-					if (entry->d_type == DT_REG && i < MAX_FILE_COUNT)
-					{
-						struct stat st;
-						stat(entry->d_name, &st);
-						printf ("sending %s, size = %d\n", entry->d_name, (int) st.st_size);
-						strncpy(clientFiles.files[i].clientName, clientName, sizeof(clientFiles.files[i].clientName));
-						strncpy(clientFiles.files[i].fileName, entry->d_name, sizeof(clientFiles.files[i].fileName));
-						sprintf(clientFiles.files[i].fileSize, "%d",(int) st.st_size);
-
-						i++;
-					}
-
-					if (i == MAX_FILE_COUNT)
-					{
-						sprintf(clientFiles.numFiles,"%d", i);
-						i = 0;
-						// now send the files and start over.
-						char buf[BUFMAX];
-						memset(buf, '\0', BUFMAX);
-						memcpy(buf,  &clientFiles, sizeof(clientFiles));
-						struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_FILE_TYPE, clientName, buf,BUFMAX));
-						memset(&clientFiles, '\0', sizeof(clientFiles));
-					}
-				}
-				/* Close the directory. */
-				if (closedir (d)) {
-					fprintf (stderr, "Could not close '%s': %s\n",
-							 dir_name, strerror (errno));
-					exit (EXIT_FAILURE);
-				}
-
-				if (i > 0)
-				{
-					// then there were a few more to send
-					printf("A few more to send\n");
-					sprintf(clientFiles.numFiles,"%d", i);
-					i = 0;
-					// now send the files and start over.
-					char buf[BUFMAX];
-					memset(buf, '\0', BUFMAX);
-					memcpy(buf,  &clientFiles, sizeof(clientFiles));
-					struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_FILE_TYPE, clientName, buf,BUFMAX));
-					memset(&clientFiles, '\0', sizeof(clientFiles));
-				}
-
-	//            char buf[BUFMAX];
-	//            memset(buf, '\0', BUFMAX);
-	//            memcpy(buf,  &clientFiles, sizeof(clientFiles));
-	//                    char *output = str2md5(buf, BUFMAX);
-	//                    printf("client md5 hash %s\n", output);
-	//            // todo:  remove debugging code
-	//			struct Files *recvFiles = malloc(sizeof(struct Files));
-	//			memcpy(recvFiles, buf, sizeof(struct Files));
-	////			int i = 0;
-	//			for (i = 0; i < 3; i++)
-	//			{
-	//				printf("Got : %s\n", recvFiles->files[i].fileName);
-	//			}
-	//
-	//            // now send the files
-	//            struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_FILE_TYPE, clientName, buf));
-
-			}
-			if (strcmp(cmd, "reg") == 0)
-			{
-				printf("Registering client\n");
-				char *arg = strtok_r(NULL, sep, &tracker);
-				if (arg != NULL)
-				{
-					clientName = arg;
-				}
-				struct Client client;
-				memset(&client,'\0',sizeof(struct Client));
-				strncpy(client.clientName, clientName, sizeof(client.clientName));
-				strncpy(client.clientIp, clientFileListeningIp, sizeof(client.clientIp));
-				strncpy(client.clientPort, clientFileListeningPort, sizeof(client.clientPort));
-				char buf[BUFMAX];
-				memset(buf, '\0', BUFMAX);
-				memcpy(buf,  &client, sizeof(client));
-				struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(REGISTER_CLIENT_TYPE, clientName, buf,BUFMAX));
+				send_file_list(clientName, serverIp, serverPort);
 			}
 
-			if (strcmp(cmd, "unreg") == 0)
-			{
-				printf("Unregistering client\n");
-				char *arg = strtok_r(NULL, sep, &tracker);
-				if (arg != NULL)
-				{
-					clientName = arg;
-				}
-				struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(UNREGISTER_CLIENT_TYPE, clientName, clientName,strlen(clientName)));
-			}
         } // end command processing
         else
         {
         	// look to see if we need to pick up a file
         	if (send_file(clientName, serverIp,serverPort))
         	{
-        		printf("%d", __LINE__);
         		redoPrompt = 1;
         	}
 
@@ -641,7 +576,14 @@ void start_client(char *clientName, char *serverIp, char *serverPort)
 
     }
     while (strcmp("exit", command) != 0);
-    //todo:  put unregister here
+
+	printf("Unregistering client\n");
+	char *arg = strtok_r(NULL, sep, &tracker);
+	if (arg != NULL)
+	{
+		clientName = arg;
+	}
+	struct Packet packet = send_and_recv_packet(serverIp, serverPort, create_packet(UNREGISTER_CLIENT_TYPE, clientName, clientName,strlen(clientName)));
 
 	freeaddrinfo(res);
 	close(sockfd);
